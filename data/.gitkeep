@@ -1,0 +1,2 @@
+# This file exists to ensure the data directory is included in git
+# even though it may be empty initially 

@@ -1,0 +1,19 @@
+{
+  "username": "racernox",
+  "password_hash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+  "user_id": "f7d5bdce-a2c7-46fd-9b20-808779a002b0",
+  "email": "ssolankI@binghamton.edu",
+  "created_at": "2025-04-14T19:45:45.662692",
+  "last_login": "2025-04-14T21:17:29.581575",
+  "preferences": {
+    "default_stocks": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "TSLA",
+      "MP",
+      "MLGO"
+    ]
+  }
+}
