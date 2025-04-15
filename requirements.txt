@@ -9,3 +9,7 @@ prophet==1.1.5
 nltk==3.8.1
 textblob==0.17.1
 ta==0.10.2 
+ollama==0.3.3
+trafilatura==1.12.2
+beautifulsoup4==4.12.3
+colorama==0.4.6

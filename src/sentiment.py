@@ -6,29 +6,82 @@ import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
+from search_agent import OllamaSearchAgent
+import time
 
 # Download NLTK resources first time (uncomment for first run)
 # nltk.download('punkt')
 # nltk.download('stopwords')
 # nltk.download('wordnet')
 
-def get_news_sentiment(ticker, period=30):
+def get_news_sentiment(ticker, period=30, use_search_agent=False):
     """
     Get sentiment analysis of recent news for a stock
     
     Args:
         ticker (str): Stock ticker symbol
         period (int): Number of days to look back for news
+        use_search_agent (bool): Whether to use Ollama search agent for enhanced news search
         
     Returns:
         dict: Dictionary with sentiment scores and data
     """
     try:
-        # Fetch stock news
+        # Fetch stock news from Yahoo Finance
         stock = yf.Ticker(ticker)
         news = stock.news
         
-        if not news:
+        # Initialize news data
+        news_data = []
+        sentiment_scores = []
+        
+        # Use Ollama search agent if requested
+        if use_search_agent:
+            try:
+                print(f"Using Ollama search agent for {ticker}...")
+                agent = OllamaSearchAgent(model="llama2")
+                agent_news = agent.search_stock_news(ticker, period)
+                
+                # Process news from the search agent
+                if agent_news:
+                    for item in agent_news:
+                        # Store data
+                        sentiment_scores.append(item['sentiment'])
+                        news_data.append(item)
+                    
+                    print(f"Search agent found {len(agent_news)} news items for {ticker}")
+            except Exception as e:
+                print(f"Error using search agent: {e}")
+                # Continue with Yahoo Finance data if search agent fails
+        
+        # Process Yahoo Finance news if available
+        if news:
+            for item in news:
+                # Format date from timestamp
+                date = datetime.fromtimestamp(item['providerPublishTime']).strftime('%Y-%m-%d')
+                
+                # Extract title and combine with summary if available
+                text = item['title']
+                if 'summary' in item and item['summary']:
+                    text += " " + item['summary']
+                
+                # Calculate sentiment
+                blob = TextBlob(text)
+                sentiment = blob.sentiment.polarity
+                
+                # Store data
+                sentiment_scores.append(sentiment)
+                news_data.append({
+                    'date': date,
+                    'title': item['title'],
+                    'source': item.get('publisher', 'Unknown'),
+                    'url': item.get('link', ''),
+                    'sentiment': sentiment,
+                    'sentiment_category': categorize_sentiment(sentiment)
+                })
+        
+        # Return empty results if no news found
+        if not news_data:
             return {
                 'ticker': ticker,
                 'average_sentiment': None,
@@ -37,34 +90,6 @@ def get_news_sentiment(ticker, period=30):
                 'sentiment_distribution': {},
                 'fig': go.Figure()
             }
-        
-        # Calculate sentiment for each news item
-        news_data = []
-        sentiment_scores = []
-        
-        for item in news:
-            # Format date from timestamp
-            date = datetime.fromtimestamp(item['providerPublishTime']).strftime('%Y-%m-%d')
-            
-            # Extract title and combine with summary if available
-            text = item['title']
-            if 'summary' in item and item['summary']:
-                text += " " + item['summary']
-            
-            # Calculate sentiment
-            blob = TextBlob(text)
-            sentiment = blob.sentiment.polarity
-            
-            # Store data
-            sentiment_scores.append(sentiment)
-            news_data.append({
-                'date': date,
-                'title': item['title'],
-                'source': item.get('publisher', 'Unknown'),
-                'url': item.get('link', ''),
-                'sentiment': sentiment,
-                'sentiment_category': categorize_sentiment(sentiment)
-            })
         
         # Calculate average sentiment
         average_sentiment = np.mean(sentiment_scores) if sentiment_scores else 0

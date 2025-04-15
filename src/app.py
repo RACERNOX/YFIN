@@ -1250,13 +1250,35 @@ def sentiment_page(tracked_stocks):
     )
     selected_period = period_options[selected_period_label]
     
+    # Use advanced search agent checkbox
+    use_search_agent = st.checkbox("Use advanced search agent (powered by Ollama)")
+    
+    # Add custom query option when search agent is enabled
+    if use_search_agent:
+        st.markdown("### Ask Ollama about this stock")
+        custom_query = st.text_input("Enter your query (e.g., 'What are the latest earnings results?')")
+        
+        if custom_query and st.button("Get Insights"):
+            with st.spinner(f"Asking Ollama about {selected_stock}..."):
+                try:
+                    from search_agent import OllamaSearchAgent
+                    agent = OllamaSearchAgent()
+                    insights = agent.get_custom_insights(selected_stock, custom_query)
+                    
+                    st.markdown("### Ollama Insights")
+                    st.markdown(f"**Query:** {custom_query}")
+                    st.markdown(insights['response'])
+                except Exception as e:
+                    st.error(f"Error getting insights: {e}")
+                    st.info("Make sure Ollama is installed and running locally.")
+    
     # Fetch stock data and news sentiment
     with st.spinner(f"Analyzing sentiment for {selected_stock}..."):
         # Get stock price data
         stock_data = get_stock_data(selected_stock, period=f"{selected_period}d")
         
         # Get sentiment data
-        sentiment_data = get_news_sentiment(selected_stock, period=selected_period)
+        sentiment_data = get_news_sentiment(selected_stock, period=selected_period, use_search_agent=use_search_agent)
         
         # Analyze correlation between price and sentiment
         if not stock_data.empty and sentiment_data and sentiment_data['news_data']:
