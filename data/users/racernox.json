@@ -4,7 +4,7 @@
   "user_id": "f7d5bdce-a2c7-46fd-9b20-808779a002b0",
   "email": "ssolankI@binghamton.edu",
   "created_at": "2025-04-14T19:45:45.662692",
-  "last_login": "2025-04-15T00:19:44.579023",
+  "last_login": "2025-04-15T11:23:12.750637",
   "preferences": {
     "default_stocks": [
       "AAPL",
@@ -12,7 +12,8 @@
       "GOOGL",
       "AMZN",
       "TSLA",
-      "MP"
+      "MP",
+      "NVDA"
     ]
   }
 }

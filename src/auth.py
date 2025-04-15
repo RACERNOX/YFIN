@@ -86,11 +86,14 @@ def authenticate_user(username, password):
     
     return True, "Login successful"
 
-def logout_user():
+def logout_user(rerun=False):
     """Log out a user"""
     st.session_state['authenticated'] = False
     st.session_state['username'] = None
     st.session_state['user_id'] = None
+    
+    if rerun:
+        st.rerun()
 
 def get_user_data(username):
     """Get user data"""
