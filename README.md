@@ -124,9 +124,7 @@ The application will be available at http://localhost:8501
 - **Scipy**: Advanced scientific computing
 - **Ta**: Technical analysis indicators
 
-## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
