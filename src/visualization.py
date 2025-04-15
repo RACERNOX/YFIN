@@ -256,33 +256,27 @@ def plot_technical_analysis(df, ticker):
 
 def plot_correlation_matrix(correlation_matrix):
     """
-    Plot a correlation matrix as a heatmap
+    Plot correlation matrix as a heatmap
     
     Args:
-        correlation_matrix (DataFrame): Correlation matrix
+        correlation_matrix (pandas.DataFrame): Correlation matrix
         
     Returns:
-        Plotly figure
+        plotly.graph_objects.Figure: Heatmap figure
     """
-    # Create a heatmap
-    fig = go.Figure(data=go.Heatmap(
-        z=correlation_matrix.values,
-        x=correlation_matrix.columns,
-        y=correlation_matrix.index,
-        colorscale='RdBu_r',
-        zmin=-1, zmax=1,
-        text=correlation_matrix.round(2).values,
-        texttemplate='%{text}',
-        hovertemplate='%{x} and %{y}<br>Correlation: %{z:.2f}<extra></extra>'
-    ))
+    # Create heatmap
+    fig = px.imshow(
+        correlation_matrix,
+        text_auto='.2f',
+        color_continuous_scale='RdBu_r',
+        zmin=-1,
+        zmax=1
+    )
     
     # Update layout
     fig.update_layout(
-        title='Correlation Matrix',
-        xaxis_title='Stock',
-        yaxis_title='Stock',
-        height=600,
-        width=800
+        title='Stock Price Correlation Matrix',
+        height=500
     )
     
     return fig

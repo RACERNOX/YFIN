@@ -1233,60 +1233,231 @@ def sentiment_page(tracked_stocks):
         return
     
     selected_stock = st.selectbox(
-        "Select a stock for sentiment analysis",
+        "Select a stock for analysis",
         options=tracked_stocks
     )
     
-    # Time period selection
-    period_options = {
-        "Last 7 days": 7,
-        "Last 30 days": 30,
-        "Last 90 days": 90
-    }
-    selected_period_label = st.radio(
-        "Select time period for analysis", 
-        options=list(period_options.keys()),
-        horizontal=True
-    )
-    selected_period = period_options[selected_period_label]
+    # Create tabs for two different modes
+    basic_tab, advanced_tab = st.tabs(["Basic Stock Analysis", "Advanced Ollama Search"])
     
-    # Use advanced search agent checkbox
-    use_search_agent = st.checkbox("Use advanced search agent (powered by Ollama)")
-    
-    # Add custom query option when search agent is enabled
-    if use_search_agent:
-        st.markdown("### Ask Ollama about this stock")
-        custom_query = st.text_input("Enter your query (e.g., 'What are the latest earnings results?')")
+    # Basic sentiment analysis tab
+    with basic_tab:
+        # Model selection dropdown
+        ollama_model = st.selectbox(
+            "Select Ollama model",
+            options=["llama3.1", "llama2", "mistral", "gemma"],
+            index=0,
+            help="Choose which Ollama model to use for analysis"
+        )
         
-        if custom_query and st.button("Get Insights"):
-            with st.spinner(f"Asking Ollama about {selected_stock}..."):
+        # Add simple parameters for search context
+        col1, col2 = st.columns(2)
+        with col1:
+            include_price_data = st.checkbox("Include recent price data", value=True,
+                                           help="Include recent stock price movements in the analysis")
+        with col2:
+            include_company_updates = st.checkbox("Include recent company updates", value=True,
+                                                help="Include recent company news and updates in the analysis")
+        
+        # Show processing details toggle
+        show_debug = st.checkbox("Show processing details", value=False)
+        
+        # Simple analysis button
+        if st.button("Analyze Stock"):
+            with st.spinner("Loading..."):
                 try:
-                    from search_agent import OllamaSearchAgent
-                    agent = OllamaSearchAgent()
-                    insights = agent.get_custom_insights(selected_stock, custom_query)
+                    # Get stock data first to display current price information
+                    stock_data = get_stock_data(selected_stock, period="30d")
                     
-                    st.markdown("### Ollama Insights")
-                    st.markdown(f"**Query:** {custom_query}")
-                    st.markdown(insights['response'])
+                    if not stock_data.empty:
+                        # Show current price information
+                        current_price = stock_data['Close'].iloc[-1]
+                        prev_price = stock_data['Close'].iloc[-2]
+                        price_change = current_price - prev_price
+                        price_change_pct = (price_change / prev_price) * 100
+                        
+                        # Display current price info
+                        price_col1, price_col2, price_col3 = st.columns([1,1,1])
+                        price_col1.metric("Current Price", f"${current_price:.2f}")
+                        price_col2.metric("Price Change", f"${price_change:.2f}", f"{price_change_pct:.2f}%")
+                        
+                        # Display a simple chart
+                        st.subheader(f"{selected_stock} Recent Price Movement")
+                        st.line_chart(stock_data['Close'])
+                    
+                    # Build custom query based on parameters
+                    custom_query = f"Give me exactly 4-5 brief key insights about {selected_stock} stock. Focus only on the most important recent information."
+                    if include_price_data:
+                        custom_query += " Include one insight about recent price movements or technical analysis."
+                    if include_company_updates:
+                        custom_query += " Include one insight about recent company news, earnings, or events."
+                    custom_query += " Keep each insight to one sentence. Format as a bulleted list."
+                    
+                    # Use the web search for analysis
+                    from web_search import OllamaWebSearcher
+                    
+                    searcher = OllamaWebSearcher(model=ollama_model, debug_to_streamlit=show_debug)
+                    result = searcher.search_and_answer(custom_query)
+                    
+                    # Display the insights
+                    st.subheader(f"Key Insights for {selected_stock}")
+                    st.markdown(result["answer"])
+                    
+                    # Display source if available
+                    if result.get("search_performed", False) and "source" in result and "source_title" in result:
+                        st.caption(f"Source: [{result['source_title']}]({result['source']})")
+                    
                 except Exception as e:
-                    st.error(f"Error getting insights: {e}")
-                    st.info("Make sure Ollama is installed and running locally.")
+                    st.error(f"Error analyzing stock: {e}")
+                    st.error("Make sure Ollama is installed and running locally.")
     
-    # Fetch stock data and news sentiment
-    with st.spinner(f"Analyzing sentiment for {selected_stock}..."):
-        # Get stock price data
-        stock_data = get_stock_data(selected_stock, period=f"{selected_period}d")
+    # Advanced Ollama search tab
+    with advanced_tab:
+        st.info("This mode lets you ask Ollama any financial question without restricting to stock analysis. With web search enabled, it can provide up-to-date information.")
         
-        # Get sentiment data
-        sentiment_data = get_news_sentiment(selected_stock, period=selected_period, use_search_agent=use_search_agent)
+        # Add model selection dropdown
+        ollama_model = st.selectbox(
+            "Select Ollama model",
+            options=["llama3.1", "llama2", "mistral", "gemma"],
+            index=0,
+            help="Choose which Ollama model to use for analysis",
+            key="advanced_model"
+        )
         
-        # Analyze correlation between price and sentiment
-        if not stock_data.empty and sentiment_data and sentiment_data['news_data']:
-            analysis_results = analyze_stock_with_sentiment(stock_data, sentiment_data)
+        # Web search option
+        use_web_search = st.checkbox("Enable web search", value=True, 
+                                   help="When enabled, Ollama will search the web for the most up-to-date information")
+        
+        # Show processing details toggle
+        show_debug = st.checkbox("Show processing details", value=False, key="advanced_debug")
+        
+        # Check if we have previous results in session state
+        if 'ollama_results' not in st.session_state:
+            st.session_state.ollama_results = None
+            st.session_state.last_query = None
+        
+        # Handle new search or follow-up question
+        if st.session_state.ollama_results is not None:
+            # Display previous results
+            st.subheader("Ollama Insights")
+            st.markdown(f"**Previous Query:** {st.session_state.last_query}")
+            st.markdown(st.session_state.ollama_results)
+            
+            # Option for follow-up question
+            st.markdown("### Ask a follow-up question")
+            follow_up = st.text_input("Enter your follow-up question:")
+            
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("Ask Follow-up"):
+                    if follow_up:
+                        with st.spinner("Loading..."):
+                            try:
+                                if use_web_search:
+                                    # Use web search for follow-up
+                                    from web_search import OllamaWebSearcher
+                                    searcher = OllamaWebSearcher(model=ollama_model, debug_to_streamlit=show_debug)
+                                    
+                                    # Create a context-aware prompt
+                                    context_prompt = f"""
+                                    Previous question: {st.session_state.last_query}
+                                    Follow-up question: {follow_up}
+                                    """
+                                    
+                                    result = searcher.search_and_answer(context_prompt)
+                                    
+                                    # Update session state
+                                    st.session_state.ollama_results = result["answer"]
+                                    st.session_state.last_query = follow_up
+                                else:
+                                    # Use regular Ollama for follow-up
+                                    from search_agent import OllamaSearchAgent
+                                    agent = OllamaSearchAgent(model=ollama_model, debug_to_streamlit=show_debug)
+                                    
+                                    # Create a context-aware prompt
+                                    context_prompt = f"""
+                                    Previous question: {st.session_state.last_query}
+                                    Follow-up question: {follow_up}
+                                    
+                                    Please answer the follow-up question considering the context 
+                                    of the previous question.
+                                    """
+                                    
+                                    insights = agent.get_custom_insights("GENERAL", context_prompt)
+                                    
+                                    # Update session state
+                                    st.session_state.ollama_results = insights['response']
+                                    st.session_state.last_query = follow_up
+                                
+                                # Force a rerun to show new results
+                                st.experimental_rerun()
+                            except Exception as e:
+                                st.error(f"Error using Ollama: {e}")
+                    else:
+                        st.warning("Please enter a follow-up question.")
+            
+            with col2:
+                if st.button("New Search"):
+                    # Clear previous results
+                    st.session_state.ollama_results = None
+                    st.session_state.last_query = None
+                    st.experimental_rerun()
+        
         else:
-            analysis_results = {}
-    
-    # Display sentiment overview
+            # Custom query input for new search
+            st.markdown("### Ask Ollama anything about finance")
+            custom_query = st.text_area("Enter your query:", height=100, 
+                                      placeholder="Examples:\n- What are the key factors driving tech stocks this quarter?\n- Explain the recent trends in cryptocurrency markets\n- How might rising interest rates affect the banking sector?")
+            
+            if st.button("Search with Ollama"):
+                if not custom_query:
+                    st.warning("Please enter a query to search with Ollama.")
+                else:
+                    try:
+                        if use_web_search:
+                            # Use web search
+                            from web_search import OllamaWebSearcher
+                            
+                            with st.spinner("Loading..."):
+                                searcher = OllamaWebSearcher(model=ollama_model, debug_to_streamlit=show_debug)
+                                result = searcher.search_and_answer(custom_query)
+                                
+                                # Store results in session state for follow-up questions
+                                st.session_state.ollama_results = result["answer"]
+                                st.session_state.last_query = custom_query
+                                
+                                # Display insights
+                                st.subheader("Ollama Insights")
+                                st.markdown(f"**Query:** {custom_query}")
+                                
+                                if result["search_performed"]:
+                                    st.success("Information retrieved from the web")
+                                else:
+                                    st.info("Answered using model's knowledge (no web search results)")
+                                    
+                                st.markdown(result["answer"])
+                        else:
+                            # Use regular Ollama
+                            from search_agent import OllamaSearchAgent
+                            
+                            with st.spinner("Loading..."):
+                                agent = OllamaSearchAgent(model=ollama_model, debug_to_streamlit=show_debug)
+                                insights = agent.get_custom_insights("GENERAL", custom_query)
+                                
+                                # Store results in session state for follow-up questions
+                                st.session_state.ollama_results = insights['response']
+                                st.session_state.last_query = custom_query
+                                
+                                # Display insights
+                                st.subheader("Ollama Insights")
+                                st.markdown(f"**Query:** {custom_query}")
+                                st.markdown(insights['response'])
+                    except Exception as e:
+                        st.error(f"Error using Ollama: {e}")
+                        st.error("Make sure Ollama is installed and running locally.")
+
+def display_sentiment_results(stock_ticker, sentiment_data, analysis_results):
+    """Display sentiment analysis results in a clean format"""
     if sentiment_data and sentiment_data['news_data']:
         col1, col2, col3 = st.columns(3)
         
@@ -1372,40 +1543,6 @@ def sentiment_page(tracked_stocks):
         if analysis_results and 'fig' in analysis_results:
             st.markdown("<h3>Price vs. Sentiment Correlation</h3>", unsafe_allow_html=True)
             
-            # Get correlations
-            correlations = analysis_results.get('correlations', {})
-            
-            # Format correlation information
-            corr_text = ""
-            if 'sentiment_price' in correlations:
-                corr = correlations['sentiment_price']
-                corr_text += f"**Price-Sentiment Correlation:** {corr:.2f}"
-                
-                if abs(corr) > 0.5:
-                    strength = "strong"
-                elif abs(corr) > 0.3:
-                    strength = "moderate"
-                else:
-                    strength = "weak"
-                    
-                direction = "positive" if corr > 0 else "negative"
-                
-                corr_text += f" ({strength} {direction} correlation)"
-                if 'sentiment_next_day_return' in correlations:
-                    corr_text += "\n\n"
-            
-            if 'sentiment_next_day_return' in correlations:
-                pred_corr = correlations['sentiment_next_day_return']
-                corr_text += f"**Sentiment Predictive Power:** {pred_corr:.2f}"
-                
-                if abs(pred_corr) > 0.3:
-                    corr_text += " (sentiment may help predict next day returns)"
-                else:
-                    corr_text += " (limited predictive power)"
-            
-            if corr_text:
-                st.markdown(corr_text)
-            
             # Show correlation plot
             correlation_fig = analysis_results['fig']
             
@@ -1456,518 +1593,11 @@ def sentiment_page(tracked_stocks):
                         <button style="background-color: var(--primary); color: white; 
                                 border: none; padding: 5px 10px; border-radius: 4px; 
                                 cursor: pointer; font-size: 0.8rem;">
-                            Read Full Article
+                            Read More
                         </button>
                     </a>
                 </div>
                 """, unsafe_allow_html=True)
-    else:
-        st.info(f"No news data available for {selected_stock} in the selected time period.")
-        
-        # Show a placeholder or suggestion
-        st.markdown("""
-        <div style="text-align: center; padding: 50px;">
-            <h3>No news data available</h3>
-            <p>Try a different stock or time period, or check if the ticker symbol is correct.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-def compare_stocks_page(tracked_stocks):
-    """
-    Display a page for comparing multiple stocks
-    """
-    # Display header
-    st.markdown("<h2 class='sub-header'>Compare Stocks</h2>", unsafe_allow_html=True)
-    
-    # Select stocks to compare
-    selected_stocks = st.multiselect(
-        "Select stocks to compare (2-5 recommended)",
-        options=tracked_stocks,
-        default=tracked_stocks[:min(3, len(tracked_stocks))]
-    )
-    
-    # Ensure we have at least 2 stocks for comparison
-    if len(selected_stocks) < 2:
-        st.warning("Please select at least two stocks to compare.")
-        return
-    
-    # Date range selector
-    periods = {
-        "1 Week": "1wk",
-        "1 Month": "1mo",
-        "3 Months": "3mo", 
-        "6 Months": "6mo",
-        "1 Year": "1y",
-        "2 Years": "2y",
-        "5 Years": "5y",
-        "Maximum": "max"
-    }
-    selected_period = st.select_slider(
-        "Select time period",
-        options=list(periods.keys()),
-        value="1 Year"
-    )
-    period = periods[selected_period]
-    
-    # Comparison metrics
-    st.markdown("<h3>Comparison Type</h3>", unsafe_allow_html=True)
-    comparison_type = st.radio(
-        "Select how to compare stocks",
-        ["Price Performance", "Volatility and Risk", "Correlation Analysis", "Key Metrics"],
-        horizontal=True
-    )
-    
-    # Fetch stock data
-    with st.spinner("Loading data for selected stocks..."):
-        stocks_data = {}
-        stocks_info = {}
-        stocks_metrics = {}
-        
-        for ticker in selected_stocks:
-            try:
-                # Get stock data
-                data = get_stock_data(ticker, period=period)
-                if not data.empty:
-                    # Add technical indicators
-                    data = add_technical_indicators(data)
-                    stocks_data[ticker] = data
-                    
-                    # Get stock info
-                    info = get_stock_info(ticker)
-                    stocks_info[ticker] = info
-                    
-                    # Calculate performance metrics
-                    metrics = calculate_performance_metrics(data)
-                    stocks_metrics[ticker] = metrics
-            except Exception as e:
-                st.error(f"Error loading data for {ticker}: {str(e)}")
-    
-    if not stocks_data:
-        st.error("Could not load data for any of the selected stocks.")
-        return
-    
-    # Display comparison based on selected type
-    if comparison_type == "Price Performance":
-        st.markdown("<h3>Price Performance Comparison</h3>", unsafe_allow_html=True)
-        
-        # Plot normalized price comparison
-        fig = plot_performance_comparison(stocks_data)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Display recent price and performance metrics in a table
-        metrics_data = []
-        
-        for ticker, metrics in stocks_metrics.items():
-            if metrics and 'day_change' in metrics:
-                # Preprocess the values to format them as strings with appropriate formatting
-                current_price = stocks_info[ticker].get('currentPrice', 'N/A') if ticker in stocks_info else 'N/A'
-                if isinstance(current_price, (int, float)):
-                    current_price = f"${current_price:.2f}"
-                    
-                day_change = metrics.get('day_change', 'N/A')
-                if isinstance(day_change, (int, float)):
-                    day_change = f"{day_change:.2f}%"
-                    
-                week_change = metrics.get('week_change', 'N/A')
-                if isinstance(week_change, (int, float)):
-                    week_change = f"{week_change:.2f}%"
-                    
-                month_change = metrics.get('month_change', 'N/A')
-                if isinstance(month_change, (int, float)):
-                    month_change = f"{month_change:.2f}%"
-                    
-                ytd_change = metrics.get('ytd_change', 'N/A')
-                if isinstance(ytd_change, (int, float)):
-                    ytd_change = f"{ytd_change:.2f}%"
-                    
-                row = {
-                    "Ticker": ticker,
-                    "Current Price": current_price,
-                    "Day Change": day_change,
-                    "Week Change": week_change,
-                    "Month Change": month_change,
-                    "YTD Change": ytd_change
-                }
-                metrics_data.append(row)
-        
-        if metrics_data:
-            metrics_df = pd.DataFrame(metrics_data)
-            metrics_df = metrics_df.set_index("Ticker")
-            
-            # Modified approach - display the dataframe directly without custom styling
-            # that can cause issues with string formatting
-            st.dataframe(metrics_df, use_container_width=True)
-            
-            # Create a separate HTML table with custom styling for better display
-            html_table = "<table class='dataframe' style='width:100%; margin-top: 20px;'><thead><tr>"
-            for col in metrics_df.columns:
-                html_table += f"<th style='padding: 8px; text-align: center;'>{col}</th>"
-            html_table += "</tr></thead><tbody>"
-            
-            for idx, row in metrics_df.iterrows():
-                html_table += f"<tr><td class='stock-ticker' style='padding: 8px; text-align: center; font-weight: bold;'>{idx}</td>"
-                
-                for col in metrics_df.columns:
-                    value = row[col]
-                    cell_style = "padding: 8px; text-align: center;"
-                    
-                    # Add color classes for the change values
-                    if "Change" in col and isinstance(value, str) and value != "N/A":
-                        if value.startswith("-"):
-                            cell_style += " color: red; font-weight: bold;"
-                        else:
-                            cell_style += " color: green; font-weight: bold;"
-                    
-                    html_table += f"<td style='{cell_style}'>{value}</td>"
-                
-                html_table += "</tr>"
-            
-            html_table += "</tbody></table>"
-            
-            st.markdown(html_table, unsafe_allow_html=True)
-    
-    elif comparison_type == "Volatility and Risk":
-        st.markdown("<h3>Volatility and Risk Comparison</h3>", unsafe_allow_html=True)
-        
-        # Display risk metrics in a table
-        risk_data = []
-        
-        for ticker, metrics in stocks_metrics.items():
-            if metrics:
-                # Preprocess values
-                volatility = metrics.get('volatility', 'N/A')
-                if isinstance(volatility, (int, float)):
-                    volatility = f"{volatility:.2f}%"
-                    
-                max_drawdown = metrics.get('max_drawdown', 'N/A')
-                if isinstance(max_drawdown, (int, float)):
-                    max_drawdown = f"{max_drawdown:.2f}%"
-                    
-                sharpe_ratio = metrics.get('sharpe_ratio', 'N/A')
-                if isinstance(sharpe_ratio, (int, float)):
-                    sharpe_ratio = f"{sharpe_ratio:.2f}"
-                    
-                beta = stocks_info[ticker].get('beta', 'N/A') if ticker in stocks_info else 'N/A'
-                if isinstance(beta, (int, float)):
-                    beta = f"{beta:.2f}"
-                
-                row = {
-                    "Ticker": ticker,
-                    "Volatility (Annual)": volatility,
-                    "Max Drawdown": max_drawdown,
-                    "Sharpe Ratio": sharpe_ratio,
-                    "Beta": beta
-                }
-                risk_data.append(row)
-        
-        if risk_data:
-            risk_df = pd.DataFrame(risk_data)
-            risk_df = risk_df.set_index("Ticker")
-            
-            # Display the dataframe directly
-            st.dataframe(risk_df, use_container_width=True)
-            
-            # Create a custom HTML table with styling
-            html_table = "<table class='dataframe' style='width:100%; margin-top: 20px;'><thead><tr>"
-            for col in risk_df.columns:
-                html_table += f"<th style='padding: 8px; text-align: center;'>{col}</th>"
-            html_table += "</tr></thead><tbody>"
-            
-            for idx, row in risk_df.iterrows():
-                html_table += f"<tr><td class='stock-ticker' style='padding: 8px; text-align: center; font-weight: bold;'>{idx}</td>"
-                
-                for col in risk_df.columns:
-                    value = row[col]
-                    cell_style = "padding: 8px; text-align: center;"
-                    
-                    # Add appropriate styles for specific columns
-                    if col == "Max Drawdown" and value != "N/A" and value.startswith("-"):
-                        cell_style += " color: red; font-weight: bold;"
-                    elif col == "Sharpe Ratio" and isinstance(value, str) and value != "N/A":
-                        # Higher Sharpe is better
-                        try:
-                            sharpe_value = float(value.replace("%", ""))
-                            if sharpe_value > 1:
-                                cell_style += " color: green; font-weight: bold;"
-                            elif sharpe_value < 0:
-                                cell_style += " color: red; font-weight: bold;"
-                        except:
-                            pass
-                    
-                    html_table += f"<td style='{cell_style}'>{value}</td>"
-                
-                html_table += "</tr>"
-            
-            html_table += "</tbody></table>"
-            
-            st.markdown(html_table, unsafe_allow_html=True)
-            
-            # Create a bar chart to compare volatility
-            if all('volatility' in metrics for metrics in stocks_metrics.values()):
-                volatility_data = {
-                    'Ticker': [],
-                    'Volatility': []
-                }
-                for ticker, metrics in stocks_metrics.items():
-                    if metrics.get('volatility') is not None:
-                        volatility_data['Ticker'].append(ticker)
-                        volatility_data['Volatility'].append(metrics['volatility'])
-                
-                if volatility_data['Ticker']:
-                    volatility_df = pd.DataFrame(volatility_data)
-                    fig = px.bar(
-                        volatility_df, 
-                        x='Ticker', 
-                        y='Volatility',
-                        title='Annualized Volatility (%)',
-                        labels={'Volatility': 'Volatility (%)'},
-                        color='Volatility',
-                        color_continuous_scale='RdYlGn_r'
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-    
-    elif comparison_type == "Correlation Analysis":
-        st.markdown("<h3>Correlation Analysis</h3>", unsafe_allow_html=True)
-        
-        # Calculate correlation matrix
-        closing_prices = {}
-        
-        for ticker, data in stocks_data.items():
-            if not data.empty and 'Close' in data.columns:
-                closing_prices[ticker] = data['Close'].reset_index(drop=True)
-        
-        if closing_prices:
-            # Create DataFrame from closing prices
-            prices_df = pd.DataFrame(closing_prices)
-            
-            # Calculate correlation matrix
-            correlation_matrix = prices_df.corr()
-            
-            # Display correlation matrix as a heatmap
-            fig = plot_correlation_matrix(correlation_matrix)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Display interpretation
-            st.markdown("<h4>Interpretation</h4>", unsafe_allow_html=True)
-            st.markdown("""
-            - **1.0**: Perfect positive correlation (stocks move in same direction)
-            - **0.0**: No correlation (stocks move independently)
-            - **-1.0**: Perfect negative correlation (stocks move in opposite directions)
-            
-            Higher positive correlations may indicate stocks affected by similar factors, while 
-            negative correlations can be useful for diversification.
-            """)
-    
-    elif comparison_type == "Key Metrics":
-        st.markdown("<h3>Key Financial Metrics Comparison</h3>", unsafe_allow_html=True)
-        
-        # Display key financial metrics in a table
-        financial_data = []
-        
-        for ticker, info in stocks_info.items():
-            # Convert values to appropriate types first
-            market_cap = info.get('marketCap', 'N/A')
-            if isinstance(market_cap, (int, float)):
-                if market_cap >= 1e12:
-                    market_cap = f"${market_cap/1e12:.2f}T"
-                elif market_cap >= 1e9:
-                    market_cap = f"${market_cap/1e9:.2f}B"
-                elif market_cap >= 1e6:
-                    market_cap = f"${market_cap/1e6:.2f}M"
-                else:
-                    market_cap = f"${market_cap:.2f}"
-                
-            pe_ratio = info.get('trailingPE', 'N/A')
-            if isinstance(pe_ratio, (int, float)):
-                pe_ratio = f"{pe_ratio:.2f}"
-            
-            forward_pe = info.get('forwardPE', 'N/A')
-            if isinstance(forward_pe, (int, float)):
-                forward_pe = f"{forward_pe:.2f}"
-            
-            dividend_yield = info.get('dividendYield', 'N/A')
-            if isinstance(dividend_yield, (int, float)):
-                dividend_yield = f"{dividend_yield:.2f}%"
-            
-            week_high = info.get('fiftyTwoWeekHigh', 'N/A')
-            if isinstance(week_high, (int, float)):
-                week_high = f"${week_high:.2f}"
-            
-            week_low = info.get('fiftyTwoWeekLow', 'N/A')
-            if isinstance(week_low, (int, float)):
-                week_low = f"${week_low:.2f}"
-        
-            row = {
-                "Ticker": ticker,
-                "Market Cap": market_cap,
-                "P/E Ratio": pe_ratio,
-                "Forward P/E": forward_pe,
-                "Dividend Yield": dividend_yield,
-                "52W High": week_high,
-                "52W Low": week_low
-            }
-            financial_data.append(row)
-        
-        if financial_data:
-            financial_df = pd.DataFrame(financial_data)
-            financial_df = financial_df.set_index("Ticker")
-            
-            # Display the DataFrame directly without custom styling
-            st.dataframe(financial_df, use_container_width=True)
-    
-    # Additional tips and insights
-    st.markdown("<h3>Analysis Insights</h3>", unsafe_allow_html=True)
-    
-    # Generate some basic insights based on the comparison
-    if comparison_type == "Price Performance" and len(selected_stocks) >= 2:
-        # Find best and worst performing stocks
-        best_stock = None
-        worst_stock = None
-        best_return = -float('inf')
-        worst_return = float('inf')
-        
-        for ticker, metrics in stocks_metrics.items():
-            if metrics and 'month_change' in metrics and metrics['month_change'] is not None:
-                if metrics['month_change'] > best_return:
-                    best_return = metrics['month_change']
-                    best_stock = ticker
-                if metrics['month_change'] < worst_return:
-                    worst_return = metrics['month_change']
-                    worst_stock = ticker
-        
-        if best_stock and worst_stock:
-            st.markdown(f"📈 **{best_stock}** has been the best performer over the last month with a return of **{best_return:.2f}%**.")
-            st.markdown(f"📉 **{worst_stock}** has been the worst performer over the last month with a return of **{worst_return:.2f}%**.")
-    
-    elif comparison_type == "Volatility and Risk" and len(selected_stocks) >= 2:
-        # Find most and least volatile stocks
-        most_volatile = None
-        least_volatile = None
-        highest_vol = -float('inf')
-        lowest_vol = float('inf')
-        
-        for ticker, metrics in stocks_metrics.items():
-            if metrics and 'volatility' in metrics and metrics['volatility'] is not None:
-                if metrics['volatility'] > highest_vol:
-                    highest_vol = metrics['volatility']
-                    most_volatile = ticker
-                if metrics['volatility'] < lowest_vol:
-                    lowest_vol = metrics['volatility']
-                    least_volatile = ticker
-        
-        if most_volatile and least_volatile:
-            st.markdown(f"📊 **{most_volatile}** is the most volatile stock with annualized volatility of **{highest_vol:.2f}%**.")
-            st.markdown(f"🛡️ **{least_volatile}** is the least volatile stock with annualized volatility of **{lowest_vol:.2f}%**.")
-    
-    # Add a tips section
-    with st.expander("Tips for Stock Comparison"):
-        st.markdown("""
-        - **Diversification**: Look for stocks with low correlation to reduce portfolio risk
-        - **Risk-Adjusted Returns**: Consider Sharpe Ratio when comparing performance
-        - **Valuation**: Compare P/E ratios to industry averages
-        - **Volatility**: Higher volatility means greater risk but potentially higher returns
-        - **Time Periods**: Compare performance across different time periods for a more complete picture
-        """)
-
-def portfolio_page(tracked_stocks):
-    """Display portfolio tracker page"""
-    st.markdown("<h2 class='sub-header'>Portfolio Tracker</h2>", unsafe_allow_html=True)
-    
-    # Under development message
-    st.markdown("<div style='text-align:center; padding:50px;'>", unsafe_allow_html=True)
-    st.markdown("🚧 **Under Development** 🚧", unsafe_allow_html=True)
-    st.markdown("<p style='font-size:18px;'>This feature is coming soon!</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
-        st.markdown("<h3>What to expect</h3>", unsafe_allow_html=True)
-        st.markdown("""
-        - Portfolio tracking
-        - Performance visualization
-        - Holding management
-        - Risk analysis
-        """)
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
-        st.markdown("<h3>Portfolio Features</h3>", unsafe_allow_html=True)
-        st.markdown("""
-        - Multiple portfolio support
-        - Transaction history
-        - Dividend tracking
-        - Tax reporting
-        """)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-def settings_page(tracked_stocks):
-    """
-    Settings page for user preferences
-    """
-    # Display username and logout button in sidebar
-    st.sidebar.markdown(f"**Logged in as:** {st.session_state['username']}")
-    if st.sidebar.button("Logout"):
-        logout_user()
-        st.rerun()
-    
-    st.markdown("<h2 class='sub-header'>Settings</h2>", unsafe_allow_html=True)
-    
-    # Manage tracked stocks
-    st.markdown("<h3>Manage Tracked Stocks</h3>", unsafe_allow_html=True)
-    
-    # Current tracked stocks
-    st.write("Current tracked stocks:")
-    st.write(", ".join(tracked_stocks))
-    
-    # Add new stock
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        new_stock = st.text_input("Add new stock (ticker symbol)").upper()
-    with col2:
-        add_button = st.button("Add")
-    
-    if add_button and new_stock:
-        if new_stock in tracked_stocks:
-            st.warning(f"{new_stock} is already in your tracked stocks.")
-        else:
-            # Verify stock exists
-            try:
-                stock = yf.Ticker(new_stock)
-                info = stock.info
-                if 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
-                    # Stock exists, add to tracked stocks
-                    new_tracked_stocks = tracked_stocks + [new_stock]
-                    set_user_stocks(st.session_state['username'], new_tracked_stocks)
-                    st.success(f"{new_stock} added to tracked stocks!")
-                    st.rerun()
-                else:
-                    st.error(f"Could not find stock with ticker symbol {new_stock}.")
-            except:
-                st.error(f"Could not find stock with ticker symbol {new_stock}.")
-    
-    # Remove stock
-    st.markdown("<h4>Remove Stock</h4>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        stock_to_remove = st.selectbox("Select stock to remove", tracked_stocks)
-    with col2:
-        remove_button = st.button("Remove")
-    
-    if remove_button and stock_to_remove:
-        if len(tracked_stocks) <= 1:
-            st.error("You must have at least one stock in your tracked stocks.")
-        else:
-            new_tracked_stocks = [s for s in tracked_stocks if s != stock_to_remove]
-            set_user_stocks(st.session_state['username'], new_tracked_stocks)
-            st.success(f"{stock_to_remove} removed from tracked stocks!")
-            st.rerun()
-    
-    # Account settings
-    st.markdown("<h3>Account Settings</h3>", unsafe_allow_html=True)
-    st.info("Account settings are under development.")
 
 def profile_page():
     """
@@ -2043,6 +1673,270 @@ def apply_dark_theme_to_px(fig):
     """
     # Apply appropriate theme styling based on current theme
     return apply_default_styling(fig, theme=st.session_state.get('theme', 'dark'))
+
+def compare_stocks_page(tracked_stocks):
+    """Display comparison between multiple stocks"""
+    st.markdown("<h2 class='sub-header'>Compare Stocks</h2>", unsafe_allow_html=True)
+    
+    # Stock selection
+    selected_stocks = st.multiselect(
+        "Select stocks to compare (2-5 recommended)",
+        options=tracked_stocks,
+        default=tracked_stocks[:min(3, len(tracked_stocks))]
+    )
+    
+    if len(selected_stocks) < 2:
+        st.warning("Please select at least 2 stocks to compare.")
+        return
+    
+    # Time period selection
+    periods = {
+        "1 Week": "1wk",
+        "1 Month": "1mo",
+        "3 Months": "3mo", 
+        "6 Months": "6mo",
+        "1 Year": "1y",
+        "2 Years": "2y",
+        "5 Years": "5y"
+    }
+    selected_period = st.select_slider(
+        "Select time period",
+        options=list(periods.keys())
+    )
+    period = periods[selected_period]
+    
+    # Comparison type
+    comparison_type = st.radio(
+        "Select comparison type",
+        ["Price Performance", "Volume Analysis", "Technical Indicators", "Correlation Analysis"],
+        horizontal=True
+    )
+    
+    # Get data for selected stocks
+    with st.spinner("Loading data for selected stocks..."):
+        stocks_data = {}
+        for ticker in selected_stocks:
+            data = get_stock_data(ticker, period=period)
+            if not data.empty:
+                # Add technical indicators
+                data = add_technical_indicators(data)
+                stocks_data[ticker] = data
+    
+    if not stocks_data:
+        st.error("Could not fetch data for any of the selected stocks.")
+        return
+    
+    # Display comparison based on selected type
+    if comparison_type == "Price Performance":
+        st.markdown("<h3>Price Performance Comparison</h3>", unsafe_allow_html=True)
+        
+        # Normalize option
+        normalize = st.checkbox("Normalize prices (start at 100%)", value=True)
+        
+        if normalize:
+            # Create normalized comparison chart
+            comparison_fig = plot_performance_comparison(stocks_data)
+        else:
+            # Create regular price chart for all selected stocks
+            comparison_fig = go.Figure()
+            
+            for ticker, data in stocks_data.items():
+                if not data.empty and 'Close' in data.columns:
+                    comparison_fig.add_trace(
+                        go.Scatter(
+                            x=data['Date'],
+                            y=data['Close'],
+                            name=f"{ticker} Close",
+                            mode='lines'
+                        )
+                    )
+            
+            comparison_fig.update_layout(
+                title='Stock Price Comparison',
+                xaxis_title='Date',
+                yaxis_title='Price ($)',
+                height=500
+            )
+        
+        # Apply theme styling
+        comparison_fig = apply_dark_theme_to_px(comparison_fig)
+        
+        st.plotly_chart(comparison_fig, use_container_width=True)
+        
+        # Display percentage changes
+        st.markdown("<h3>Performance Metrics</h3>", unsafe_allow_html=True)
+        
+        metrics_data = []
+        for ticker, data in stocks_data.items():
+            if not data.empty and len(data) > 1:
+                # Calculate changes
+                start_price = data['Close'].iloc[0]
+                end_price = data['Close'].iloc[-1]
+                price_change = (end_price - start_price) / start_price * 100
+                
+                # Calculate volatility
+                daily_returns = data['Close'].pct_change().dropna()
+                volatility = daily_returns.std() * (252 ** 0.5) * 100  # Annualized
+                
+                metrics_data.append({
+                    'Ticker': ticker,
+                    'Start Price': start_price,
+                    'End Price': end_price,
+                    'Change %': price_change,
+                    'Volatility %': volatility
+                })
+        
+        if metrics_data:
+            metrics_df = pd.DataFrame(metrics_data)
+            
+            # Style the dataframe
+            def color_change(val):
+                color = 'green' if val > 0 else 'red' if val < 0 else 'black'
+                return f'color: {color}'
+            
+            styled_df = metrics_df.style.format({
+                'Start Price': '${:.2f}',
+                'End Price': '${:.2f}',
+                'Change %': '{:.2f}%',
+                'Volatility %': '{:.2f}%'
+            }).applymap(color_change, subset=['Change %'])
+            
+            st.dataframe(styled_df, use_container_width=True)
+    
+    elif comparison_type == "Volume Analysis":
+        st.markdown("<h3>Trading Volume Comparison</h3>", unsafe_allow_html=True)
+        
+        # Create volume comparison chart
+        volume_fig = go.Figure()
+        
+        for ticker, data in stocks_data.items():
+            if not data.empty and 'Volume' in data.columns:
+                volume_fig.add_trace(
+                    go.Scatter(
+                        x=data['Date'],
+                        y=data['Volume'],
+                        name=f"{ticker} Volume",
+                        mode='lines'
+                    )
+                )
+        
+        volume_fig.update_layout(
+            title='Trading Volume Comparison',
+            xaxis_title='Date',
+            yaxis_title='Volume',
+            height=500
+        )
+        
+        # Apply theme styling
+        volume_fig = apply_dark_theme_to_px(volume_fig)
+        
+        st.plotly_chart(volume_fig, use_container_width=True)
+        
+        # Display volume statistics
+        st.markdown("<h3>Volume Statistics</h3>", unsafe_allow_html=True)
+        
+        volume_stats = []
+        for ticker, data in stocks_data.items():
+            if not data.empty and 'Volume' in data.columns:
+                avg_volume = data['Volume'].mean()
+                max_volume = data['Volume'].max()
+                max_volume_date = data.loc[data['Volume'].idxmax(), 'Date']
+                
+                volume_stats.append({
+                    'Ticker': ticker,
+                    'Avg. Daily Volume': avg_volume,
+                    'Max Volume': max_volume,
+                    'Max Volume Date': max_volume_date.strftime('%Y-%m-%d')
+                })
+        
+        if volume_stats:
+            volume_df = pd.DataFrame(volume_stats)
+            
+            # Format the dataframe
+            volume_df['Avg. Daily Volume'] = volume_df['Avg. Daily Volume'].map(lambda x: f"{x:,.0f}")
+            volume_df['Max Volume'] = volume_df['Max Volume'].map(lambda x: f"{x:,.0f}")
+            
+            st.dataframe(volume_df, use_container_width=True)
+    
+    elif comparison_type == "Technical Indicators":
+        st.markdown("<h3>Technical Indicators Comparison</h3>", unsafe_allow_html=True)
+        
+        # Select indicator to compare
+        indicators = [
+            "SMA_20", "SMA_50", "SMA_200", 
+            "EMA_12", "EMA_26",
+            "RSI", "MACD"
+        ]
+        
+        selected_indicator = st.selectbox(
+            "Select technical indicator to compare",
+            options=indicators
+        )
+        
+        # Create indicator comparison chart
+        indicator_fig = go.Figure()
+        
+        for ticker, data in stocks_data.items():
+            if not data.empty and selected_indicator in data.columns:
+                indicator_fig.add_trace(
+                    go.Scatter(
+                        x=data['Date'],
+                        y=data[selected_indicator],
+                        name=f"{ticker} {selected_indicator}",
+                        mode='lines'
+                    )
+                )
+        
+        # Add reference lines for RSI
+        if selected_indicator == "RSI":
+            indicator_fig.add_hline(y=70, line_dash="dash", line_color="red", 
+                             annotation_text="Overbought", annotation_position="right")
+            indicator_fig.add_hline(y=30, line_dash="dash", line_color="green", 
+                             annotation_text="Oversold", annotation_position="right")
+        
+        indicator_fig.update_layout(
+            title=f'{selected_indicator} Comparison',
+            xaxis_title='Date',
+            yaxis_title=selected_indicator,
+            height=500
+        )
+        
+        # Apply theme styling
+        indicator_fig = apply_dark_theme_to_px(indicator_fig)
+        
+        st.plotly_chart(indicator_fig, use_container_width=True)
+    
+    elif comparison_type == "Correlation Analysis":
+        st.markdown("<h3>Correlation Analysis</h3>", unsafe_allow_html=True)
+        
+        # Calculate correlation matrix
+        closing_prices = {}
+        
+        for ticker, data in stocks_data.items():
+            if not data.empty and 'Close' in data.columns:
+                closing_prices[ticker] = data['Close'].reset_index(drop=True)
+        
+        if closing_prices:
+            # Create DataFrame from closing prices
+            prices_df = pd.DataFrame(closing_prices)
+            
+            # Calculate correlation matrix
+            correlation_matrix = prices_df.corr()
+            
+            # Display correlation matrix as a heatmap
+            fig = plot_correlation_matrix(correlation_matrix)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Display interpretation
+            st.markdown("<h4>Interpretation</h4>", unsafe_allow_html=True)
+            st.markdown("""
+            - **1.0**: Perfect positive correlation (stocks move in same direction)
+            - **0.0**: No correlation (stocks move independently)
+            - **-1.0**: Perfect negative correlation (stocks move in opposite directions)
+            
+            Higher positive correlations may indicate stocks affected by similar factors, while 
+            negative correlations can be useful for diversification.
+            """)
 
 def main():
     # Check if user is authenticated

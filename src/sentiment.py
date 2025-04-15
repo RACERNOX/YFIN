@@ -8,13 +8,14 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from search_agent import OllamaSearchAgent
 import time
+import streamlit as st
 
 # Download NLTK resources first time (uncomment for first run)
 # nltk.download('punkt')
 # nltk.download('stopwords')
 # nltk.download('wordnet')
 
-def get_news_sentiment(ticker, period=30, use_search_agent=False):
+def get_news_sentiment(ticker, period=30, use_search_agent=False, debug_to_streamlit=False, ollama_model="llama3.1"):
     """
     Get sentiment analysis of recent news for a stock
     
@@ -22,6 +23,8 @@ def get_news_sentiment(ticker, period=30, use_search_agent=False):
         ticker (str): Stock ticker symbol
         period (int): Number of days to look back for news
         use_search_agent (bool): Whether to use Ollama search agent for enhanced news search
+        debug_to_streamlit (bool): Whether to show debug info in the UI
+        ollama_model (str): The Ollama model to use for sentiment analysis
         
     Returns:
         dict: Dictionary with sentiment scores and data
@@ -39,7 +42,7 @@ def get_news_sentiment(ticker, period=30, use_search_agent=False):
         if use_search_agent:
             try:
                 print(f"Using Ollama search agent for {ticker}...")
-                agent = OllamaSearchAgent(model="llama2")
+                agent = OllamaSearchAgent(model=ollama_model, debug_to_streamlit=debug_to_streamlit)
                 agent_news = agent.search_stock_news(ticker, period)
                 
                 # Process news from the search agent
@@ -52,6 +55,8 @@ def get_news_sentiment(ticker, period=30, use_search_agent=False):
                     print(f"Search agent found {len(agent_news)} news items for {ticker}")
             except Exception as e:
                 print(f"Error using search agent: {e}")
+                if debug_to_streamlit:
+                    st.error(f"Error using search agent: {e}")
                 # Continue with Yahoo Finance data if search agent fails
         
         # Process Yahoo Finance news if available
