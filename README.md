@@ -10,6 +10,9 @@ A comprehensive financial analysis platform built with Streamlit that provides p
 - **News Sentiment Analysis**: Analyze how news sentiment affects stock prices
 - **Price Prediction Models**: Forecast future stock prices using AI models
 - **Stock Comparison**: Side-by-side comparison of multiple stocks
+- **Stock Metrics Validation**: Validate and test financial metrics accuracy
+- **Web Search Integration**: Search for financial information directly within the app
+- **FinTech Analytics Tools**: Specialized financial technology analysis features
 - **Theme Support**: Toggle between dark and light modes
 - **User Authentication**: Secure account management with personalized stock lists
 - **Responsive Design**: Optimized for both desktop and mobile viewing
@@ -49,6 +52,11 @@ A comprehensive financial analysis platform built with Streamlit that provides p
 - Volatility and risk metrics comparison
 - Correlation analysis
 - Key financial metrics side-by-side
+
+### FinTech Analysis
+- Specialized financial technology metrics
+- Advanced visualization for fintech-specific data
+- Validation tools for financial data accuracy
 
 ## 💻 Installation
 
@@ -93,8 +101,14 @@ The application will be available at http://localhost:8501
   - `stock_data.py` - Data fetching and processing
   - `analysis.py` - Financial analysis functions
   - `visualization.py` - Charts and data visualization
+  - `fintech_visualization.py` - Specialized fintech visualizations
   - `prediction.py` - Price prediction models
   - `sentiment.py` - News sentiment analysis
+  - `stock_metrics.py` - Stock performance metrics calculation
+  - `validate_metrics.py` - Validation tools for metrics
+  - `fintech_analysis.py` - Specialized fintech analysis tools
+  - `search_agent.py` - Web search functionality
+  - `web_search.py` - Web data retrieval functions
 - `data/` - Local data storage
   - `users/` - User profiles and preferences
 
@@ -105,7 +119,10 @@ The application will be available at http://localhost:8501
 - **yfinance**: Yahoo Finance data API
 - **pandas/numpy**: Data manipulation and analysis
 - **Prophet/sklearn**: Predictive modeling
-- **TextBlob**: Natural language processing for sentiment analysis
+- **TextBlob/NLTK**: Natural language processing for sentiment analysis
+- **Requests/BeautifulSoup**: Web scraping and data retrieval
+- **Scipy**: Advanced scientific computing
+- **Ta**: Technical analysis indicators
 
 ## 📝 License
 
