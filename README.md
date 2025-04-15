@@ -60,28 +60,43 @@ A comprehensive financial analysis platform built with Streamlit that provides p
 
 ## 💻 Installation
 
+### Prerequisites
+- Python 3.8+ (Python 3.13 is supported)
+- Git
+
+### Setup Steps
+
 1. Clone this repository:
    ```
    git clone https://github.com/RACERNOX/yfin.git
    cd yfin
    ```
 
-2. Install required packages:
+2. Create and activate a virtual environment:
    ```
+   # On macOS/Linux
+   python3 -m venv venv
+   source venv/bin/activate
+
+   # On Windows
+   python -m venv venv
+   venv\Scripts\activate
+   ```
+
+3. Install required packages:
+   ```
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
-3. (Optional) Install NLTK resources for sentiment analysis:
-   ```python
-   import nltk
-   nltk.download('punkt')
-   nltk.download('stopwords')
-   nltk.download('wordnet')
+4. Install NLTK resources for sentiment analysis:
+   ```
+   python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
    ```
 
 ## 🚀 Running the Application
 
-Option 1: Using the run script:
+Option 1: Using the run script (recommended):
 ```
 python run.py
 ```
@@ -91,7 +106,13 @@ Option 2: Directly with Streamlit:
 streamlit run src/app.py
 ```
 
-The application will be available at http://localhost:8501
+The application will be available at http://localhost:8501 in your web browser.
+
+### Troubleshooting
+
+If you encounter dependency issues during installation:
+- For Python 3.13 users: Some packages may require the latest versions. Try removing version constraints from requirements.txt.
+- For Apple Silicon (M1/M2/M3) Mac users: Make sure you're using Python built for ARM architecture.
 
 ## 📂 Project Structure
 
@@ -123,8 +144,6 @@ The application will be available at http://localhost:8501
 - **Requests/BeautifulSoup**: Web scraping and data retrieval
 - **Scipy**: Advanced scientific computing
 - **Ta**: Technical analysis indicators
-
-
 
 ## 🙏 Acknowledgments
 
