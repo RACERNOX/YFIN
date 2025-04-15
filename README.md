@@ -1,4 +1,4 @@
-# YFin - Advanced Stock Tracker
+# YFIN - Advanced Stock Tracker
 
 https://yfinan.streamlit.app/
 
