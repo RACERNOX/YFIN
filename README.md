@@ -94,6 +94,48 @@ A comprehensive financial analysis platform built with Streamlit that provides p
    python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
    ```
 
+## 🤖 Setting Up Ollama
+
+YFin uses Ollama for enhanced sentiment analysis and news search capabilities. This step is optional but recommended for accessing all features.
+
+### Installing Ollama
+
+1. Visit [Ollama's official website](https://ollama.ai/) and download the installer for your operating system.
+
+2. Follow the installation instructions for your platform:
+   - **macOS**: Run the downloaded .dmg file and follow the installer prompts
+   - **Windows**: Run the installer .exe file
+   - **Linux**: Follow the command-line instructions from the Ollama website
+
+### Configuring Ollama for YFin
+
+1. Pull the recommended model (llama3.1) used by YFin:
+   ```
+   ollama pull llama3.1
+   ```
+
+2. List available models to verify installation:
+   ```
+   ollama list
+   ```
+   You should see "llama3.1" in the list of available models.
+
+3. The YFin application will automatically use Ollama if it's running. To manually start the Ollama service:
+   ```
+   # On macOS/Linux, you can start Ollama with:
+   ollama serve
+   
+   # Keep this terminal window open while using YFin
+   ```
+
+4. To test that Ollama is working correctly:
+   ```
+   ollama run llama3.1
+   ```
+   Type a test prompt and press Ctrl+C to exit when finished.
+
+When running YFin, the application will automatically attempt to use Ollama for enhanced sentiment analysis if it's available.
+
 ## 🚀 Running the Application
 
 Option 1: Using the run script (recommended):
