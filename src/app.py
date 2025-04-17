@@ -406,7 +406,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # App title
-st.markdown("<h1 class='main-header'>YFin - Advanced Stock Tracker</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>YFIN - AI-Driven Financial Analytics Forecasting Platform</h1>", unsafe_allow_html=True)
 
 # Add theme toggle in sidebar
 # with st.sidebar:

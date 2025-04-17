@@ -1,4 +1,6 @@
-# YFin - Advanced Stock Tracker
+# YFIN - Advanced Stock Tracker
+
+https://yfinan.streamlit.app/
 
 A comprehensive financial analysis platform built with Streamlit that provides powerful tools for stock tracking, technical analysis, news sentiment analysis, and price prediction.
 
