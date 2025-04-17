@@ -46,7 +46,7 @@ from auth import (
 
 # Page configuration
 st.set_page_config(
-    page_title="YFin - Advanced Stock Tracker",
+    page_title="YFIN : AI-Driven Financial Analytics Forecasting Platform",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
