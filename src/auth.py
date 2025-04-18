@@ -4,6 +4,9 @@ import json
 import hashlib
 import uuid
 from datetime import datetime, timedelta
+import numpy as np
+import pandas as pd
+import multiprocessing.shared_memory as shm
 
 # Directory for user data
 USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'users')
@@ -138,4 +141,89 @@ def set_user_stocks(username, stocks):
     with open(get_user_file_path(username), 'w') as f:
         json.dump(user_data, f, indent=2)
     
-    return True 
+    return True
+
+def get_stock_data_02_via_ipc(shared_mem_seg_name, save_to_csv=True):
+    """
+    Fetch stock data from a shared memory segment created by a C++ process
+    
+    Args:
+        shared_mem_seg_name (str): Name of the shared memory segment
+        
+    Returns:
+        pandas.DataFrame: Stock data with the same format as get_stock_data()
+    """
+    try:
+        # Access the existing shared memory block by name
+        existing_shm = shm.SharedMemory(name=shared_mem_seg_name)
+        
+        # First 4 bytes (int32) contain the number of rows
+        num_rows = np.ndarray(shape=(1,), dtype=np.int32, buffer=existing_shm.buf[0:4])[0]
+        
+        # Next 4 bytes contain the number of columns 
+        num_cols = np.ndarray(shape=(1,), dtype=np.int32, buffer=existing_shm.buf[4:8])[0]
+        
+        # Calculate the offset for the actual data
+        data_offset = 8  # 2 integers (4 bytes each)
+        
+        # Create a NumPy array that references the shared memory
+        # Assuming data is stored as float64 (8 bytes per value)
+        data_size = num_rows * num_cols
+        data_array = np.ndarray(
+            shape=(num_rows, num_cols),
+            dtype=np.float64,
+            buffer=existing_shm.buf[data_offset:]
+        )
+        
+        # Create a DataFrame with the appropriate columns
+        column_names = ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        
+        # If the number of columns doesn't match our expected format, adjust
+        if num_cols != len(column_names):
+            column_names = [f'Col_{i}' for i in range(num_cols)]
+        
+        # Create DataFrame from the NumPy array
+        df = pd.DataFrame(data_array, columns=column_names)
+        
+        # Generate dates for the index (assuming daily data, newest first)
+        end_date = datetime.now()
+        dates = [end_date - timedelta(days=i) for i in range(num_rows)]
+        dates.reverse()  # Oldest first
+        
+        # Add Date column
+        df['Date'] = dates
+        
+        # Clean up the shared memory reference (doesn't delete the shared memory)
+        existing_shm.close()
+        
+        # After creating the DataFrame, save to CSV
+        if save_to_csv and not df.empty:
+            csv_path = os.path.join(USER_DATA_DIR, f"{shared_mem_seg_name}_data.csv")
+            df.to_csv(csv_path, index=False)
+            print(f"Data saved to {csv_path}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error accessing shared memory: {e}")
+        return pd.DataFrame()
+
+# For parallel processing
+def process_multiple_tickers(ticker_list):
+    import concurrent.futures
+    
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(ticker_list))) as executor:
+        future_to_ticker = {
+            executor.submit(get_stock_data_02_via_ipc, f"shm_{ticker}"): ticker 
+            for ticker in ticker_list
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            ticker = future_to_ticker[future]
+            try:
+                results[ticker] = future.result()
+            except Exception as e:
+                print(f"Error processing {ticker}: {e}")
+    
+    return results 
