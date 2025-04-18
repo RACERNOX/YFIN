@@ -1,4 +1,4 @@
-# YFIN - Advanced Stock Tracker
+# YFIN - AI-Driven Financial Analytics Forecasting Platform
 
 https://yfinan.streamlit.app/
 
