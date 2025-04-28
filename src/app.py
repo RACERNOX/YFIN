@@ -43,6 +43,11 @@ from auth import (
     setup_auth, authenticate_user, save_user, logout_user,
     get_user_stocks, set_user_stocks, get_user_data
 )
+from portfolio_optimization import (
+    get_stock_data_for_portfolio, calculate_returns, optimize_portfolio,
+    generate_efficient_frontier, plot_efficient_frontier,
+    get_risk_profile_allocation, compare_allocations
+)
 
 # Page configuration
 st.set_page_config(
@@ -2786,6 +2791,332 @@ def fintech_analysis_page(tracked_stocks):
                 import traceback
                 st.code(traceback.format_exc())
 
+def portfolio_optimization_page(tracked_stocks):
+    """
+    Page for portfolio optimization using Modern Portfolio Theory.
+    """
+    st.markdown("<h1 class='main-header'>Portfolio Optimization</h1>", unsafe_allow_html=True)
+    
+    # Check if there are enough tracked stocks
+    if len(tracked_stocks) < 2:
+        st.warning("Please track at least 2 stocks to use the portfolio optimization tool.")
+        st.info("You can add stocks from the Dashboard or Stock Analysis pages.")
+        return
+    
+    st.markdown("""
+    <div class="metric-container">
+        <h4>Modern Portfolio Theory</h4>
+        <p>Optimize your portfolio allocation based on risk and return</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Sidebar for configuration options
+    st.sidebar.markdown("### Optimization Settings")
+    
+    # Time period selection
+    period_options = {
+        "1 Year": "1y",
+        "2 Years": "2y",
+        "5 Years": "5y",
+        "10 Years": "10y"
+    }
+    selected_period = st.sidebar.selectbox(
+        "Historical Data Period", 
+        list(period_options.keys()),
+        index=0
+    )
+    period = period_options[selected_period]
+    
+    # Risk profile selection
+    risk_profile = st.sidebar.radio(
+        "Risk Profile",
+        ["Conservative", "Moderate", "Aggressive"],
+        index=1
+    )
+    
+    # Stock selection
+    st.sidebar.markdown("### Stock Selection")
+    selected_stocks = st.sidebar.multiselect(
+        "Select stocks for optimization",
+        tracked_stocks,
+        default=tracked_stocks[:min(5, len(tracked_stocks))]
+    )
+    
+    if len(selected_stocks) < 2:
+        st.warning("Please select at least 2 stocks for portfolio optimization.")
+        return
+    
+    # Analysis button
+    analyze_btn = st.sidebar.button("Optimize Portfolio")
+    
+    # Progress indicator
+    progress_container = st.empty()
+    
+    # Main content area - divided into tabs
+    overview_tab, efficient_frontier_tab, allocations_tab = st.tabs([
+        "Portfolio Overview", 
+        "Efficient Frontier", 
+        "Allocation Comparison"
+    ])
+    
+    if analyze_btn:
+        # Display progress
+        progress_bar = progress_container.progress(0)
+        progress_bar.progress(10)
+        
+        # Fetch historical data
+        with st.spinner("Fetching historical data..."):
+            prices_df = get_stock_data_for_portfolio(selected_stocks, period=period)
+            progress_bar.progress(30)
+        
+        # Calculate returns
+        with st.spinner("Calculating returns..."):
+            returns_df = calculate_returns(prices_df)
+            progress_bar.progress(50)
+        
+        # Generate efficient frontier
+        with st.spinner("Generating efficient frontier..."):
+            frontier_df = generate_efficient_frontier(returns_df, num_portfolios=3000)
+            progress_bar.progress(70)
+        
+        # Optimize portfolio based on risk profile
+        with st.spinner("Optimizing portfolio..."):
+            portfolio = get_risk_profile_allocation(risk_profile.lower(), returns_df)
+            allocations = compare_allocations(returns_df)
+            progress_bar.progress(90)
+        
+        # Clear progress indicator
+        progress_container.empty()
+        
+        # 1. Overview Tab
+        with overview_tab:
+            st.markdown(f"<h2 class='sub-header'>{risk_profile} Portfolio</h2>", unsafe_allow_html=True)
+            
+            # Display portfolio details
+            st.markdown(f"<p>{portfolio['description']}</p>", unsafe_allow_html=True)
+            
+            # Key metrics in columns
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                annual_return_pct = portfolio['expected_annual_return'] * 100
+                st.markdown(
+                    f"""
+                    <div class="metric-container">
+                        <h4>Expected Annual Return</h4>
+                        <p class="positive">{annual_return_pct:.2f}%</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col2:
+                annual_vol_pct = portfolio['annual_volatility'] * 100
+                st.markdown(
+                    f"""
+                    <div class="metric-container">
+                        <h4>Annual Volatility</h4>
+                        <p class="neutral">{annual_vol_pct:.2f}%</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col3:
+                sharpe = portfolio['sharpe_ratio']
+                st.markdown(
+                    f"""
+                    <div class="metric-container">
+                        <h4>Sharpe Ratio</h4>
+                        <p class="{'positive' if sharpe > 1 else 'neutral'}">{sharpe:.2f}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            # Display allocation chart
+            st.markdown("<h3>Recommended Allocation</h3>", unsafe_allow_html=True)
+            
+            # Convert weights to DataFrame for visualization
+            weights_df = pd.DataFrame({
+                'Stock': list(portfolio['weights'].keys()),
+                'Weight': list(portfolio['weights'].values())
+            })
+            
+            # Sort by weight for better visualization
+            weights_df = weights_df.sort_values('Weight', ascending=False)
+            
+            # Create pie chart
+            fig = px.pie(
+                weights_df, 
+                values='Weight', 
+                names='Stock', 
+                title=f"{risk_profile} Portfolio Allocation",
+                template='plotly_dark' if st.session_state['theme'] == 'dark' else 'plotly_white',
+                color_discrete_sequence=px.colors.qualitative.Plotly
+            )
+            
+            # Update layout
+            fig.update_layout(
+                legend=dict(orientation='h', y=-0.1),
+                margin=dict(t=60, b=60, l=20, r=20)
+            )
+            
+            # Format percentages in hover text
+            fig.update_traces(
+                hovertemplate='<b>%{label}</b><br>Weight: %{percent:.1%}<extra></extra>'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Display weights in a table
+            st.markdown("<h3>Allocation Details</h3>", unsafe_allow_html=True)
+            
+            # Format weights as percentages
+            weights_df['Weight'] = weights_df['Weight'].apply(lambda x: f"{x*100:.2f}%")
+            
+            # Show table
+            st.dataframe(weights_df, use_container_width=True)
+        
+        # 2. Efficient Frontier Tab
+        with efficient_frontier_tab:
+            st.markdown("<h2 class='sub-header'>Efficient Frontier</h2>", unsafe_allow_html=True)
+            
+            st.markdown("""
+            <p>The efficient frontier represents the optimal portfolios that offer the highest expected return for a given level of risk. 
+            Points on the frontier represent different portfolio allocations.</p>
+            """, unsafe_allow_html=True)
+            
+            # Get optimal point for highlighting
+            optimal_point = (portfolio['annual_volatility'], portfolio['expected_annual_return'])
+            
+            # Plot the efficient frontier
+            frontier_fig = plot_efficient_frontier(
+                frontier_df, 
+                optimal_point=optimal_point, 
+                theme=st.session_state['theme']
+            )
+            
+            st.plotly_chart(frontier_fig, use_container_width=True)
+            
+            # Add explanation
+            st.markdown("""
+            <h3>Understanding the Efficient Frontier</h3>
+            <ul>
+                <li><b>X-axis:</b> Portfolio volatility (risk)</li>
+                <li><b>Y-axis:</b> Expected annual return</li>
+                <li><b>Color:</b> Sharpe ratio (return per unit of risk)</li>
+                <li><b>Star:</b> Your selected optimal portfolio based on your risk profile</li>
+            </ul>
+            <p>Portfolios on the upper left of the frontier offer the best risk-return tradeoff.
+            The highlighted star represents your recommended portfolio allocation based on your risk profile.</p>
+            """, unsafe_allow_html=True)
+        
+        # 3. Allocations Comparison Tab
+        with allocations_tab:
+            st.markdown("<h2 class='sub-header'>Risk Profile Comparison</h2>", unsafe_allow_html=True)
+            
+            st.markdown("""
+            <p>Compare portfolio allocations across different risk profiles to understand how risk tolerance affects investment strategy.</p>
+            """, unsafe_allow_html=True)
+            
+            # Create comparison table of key metrics
+            metrics_df = pd.DataFrame({
+                'Metric': ['Expected Annual Return', 'Annual Volatility', 'Sharpe Ratio'],
+                'Conservative': [
+                    f"{allocations['conservative']['expected_annual_return']*100:.2f}%",
+                    f"{allocations['conservative']['annual_volatility']*100:.2f}%",
+                    f"{allocations['conservative']['sharpe_ratio']:.2f}"
+                ],
+                'Moderate': [
+                    f"{allocations['moderate']['expected_annual_return']*100:.2f}%",
+                    f"{allocations['moderate']['annual_volatility']*100:.2f}%",
+                    f"{allocations['moderate']['sharpe_ratio']:.2f}"
+                ],
+                'Aggressive': [
+                    f"{allocations['aggressive']['expected_annual_return']*100:.2f}%",
+                    f"{allocations['aggressive']['annual_volatility']*100:.2f}%",
+                    f"{allocations['aggressive']['sharpe_ratio']:.2f}"
+                ]
+            })
+            
+            st.dataframe(metrics_df, use_container_width=True)
+            
+            # Create allocation comparison visualization
+            st.markdown("<h3>Allocation Comparison</h3>", unsafe_allow_html=True)
+            
+            # Prepare data for grouped bar chart
+            allocation_data = []
+            
+            for profile in ['conservative', 'moderate', 'aggressive']:
+                for stock, weight in allocations[profile]['weights'].items():
+                    allocation_data.append({
+                        'Stock': stock,
+                        'Weight': weight * 100,  # Convert to percentage
+                        'Risk Profile': profile.capitalize()
+                    })
+            
+            allocation_df = pd.DataFrame(allocation_data)
+            
+            # Create grouped bar chart
+            fig = px.bar(
+                allocation_df,
+                x='Stock',
+                y='Weight',
+                color='Risk Profile',
+                barmode='group',
+                title='Asset Allocation by Risk Profile',
+                template='plotly_dark' if st.session_state['theme'] == 'dark' else 'plotly_white',
+                color_discrete_sequence=px.colors.qualitative.Plotly
+            )
+            
+            # Update layout
+            fig.update_layout(
+                xaxis_title='Stock',
+                yaxis_title='Weight (%)',
+                legend=dict(orientation='h', y=1.1),
+                margin=dict(t=80, b=40)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add risk profile descriptions
+            st.markdown("""
+            <h3>Risk Profile Descriptions</h3>
+            <div class="metric-container">
+                <h4>Conservative</h4>
+                <p>Prioritizes capital preservation and stable returns with lower risk. 
+                Suitable for investors with short time horizons or low risk tolerance.</p>
+            </div>
+            <div class="metric-container">
+                <h4>Moderate</h4>
+                <p>Balances growth and stability with moderate risk. 
+                Optimal Sharpe ratio for the best risk-adjusted returns. 
+                Suitable for most investors with medium-term horizons.</p>
+            </div>
+            <div class="metric-container">
+                <h4>Aggressive</h4>
+                <p>Aims for maximum growth with higher volatility. 
+                Suitable for investors with longer time horizons and higher risk tolerance.</p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        # Initial view before analysis
+        with overview_tab:
+            st.info("Click 'Optimize Portfolio' in the sidebar to generate portfolio recommendations.")
+            
+            st.markdown("""
+            <h3>Modern Portfolio Theory (MPT)</h3>
+            <p>MPT is a framework for constructing an investment portfolio that maximizes expected return for a given level of risk. 
+            Key principles include:</p>
+            <ul>
+                <li><b>Diversification:</b> Combining assets with different correlations reduces overall portfolio risk</li>
+                <li><b>Efficient Frontier:</b> The set of optimal portfolios offering the highest expected return for a given level of risk</li>
+                <li><b>Risk-Return Tradeoff:</b> Higher expected returns generally require taking on more risk</li>
+                <li><b>Sharpe Ratio:</b> Measures risk-adjusted performance as excess return per unit of risk</li>
+            </ul>
+            """, unsafe_allow_html=True)
+
 def main():
     # Check if user is authenticated
     if not st.session_state.get("authenticated", False):
@@ -2817,6 +3148,7 @@ def main():
         pages = {
             "Dashboard": dashboard_page,
             "Stock Analysis": stock_analysis_page,
+            "Portfolio Optimization": portfolio_optimization_page,
             "Advanced Fintech Analysis": fintech_analysis_page,
             "Price Prediction": prediction_page,
             "News Sentiment": sentiment_page,

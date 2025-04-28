@@ -12,6 +12,7 @@ A comprehensive financial analysis platform built with Streamlit that provides p
 - **News Sentiment Analysis**: Analyze how news sentiment affects stock prices
 - **Price Prediction Models**: Forecast future stock prices using AI models
 - **Stock Comparison**: Side-by-side comparison of multiple stocks
+- **Portfolio Optimization**: Modern Portfolio Theory implementation for optimal asset allocation based on risk tolerance
 - **Stock Metrics Validation**: Validate and test financial metrics accuracy
 - **Web Search Integration**: Search for financial information directly within the app
 - **FinTech Analytics Tools**: Specialized financial technology analysis features
@@ -33,6 +34,14 @@ A comprehensive financial analysis platform built with Streamlit that provides p
 - Risk analysis (volatility, maximum drawdown, Sharpe ratio)
 - Support/resistance level detection
 - Customizable technical charts
+
+### Portfolio Optimization
+- Modern Portfolio Theory implementation
+- Efficient frontier visualization
+- Risk-based portfolio allocation (conservative, moderate, aggressive)
+- Optimized weightings for maximum Sharpe ratio
+- Risk profile comparison and analysis
+- Historical performance simulation
 
 ### News Sentiment
 - Real-time news sentiment scoring
